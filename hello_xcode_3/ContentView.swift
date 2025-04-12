@@ -8,65 +8,59 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var password = ""
-    @State private var isPasswordCorrect = false
-    @State private var showError = false
-    @State private var isUnlocked = false
-    
-    private let correctPassword = "0418"
+    @State private var selectedLevel = 1
+    @State private var showingVolumeMeter = false
+    @State private var showingARView = false
     
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                if isUnlocked {
-                    NavigationLink(destination: VolumeLevelView()) {
-                        Text("Start Volume Challenge")
+                Text("Select Level")
+                    .font(.largeTitle)
+                    .padding()
+                
+                ForEach(1...3, id: \.self) { level in
+                    Button(action: {
+                        selectedLevel = level
+                        if level == 2 {
+                            showingVolumeMeter = true
+                        } else if level == 3 {
+                            showingARView = true
+                        }
+                    }) {
+                        Text("Level \(level)")
+                            .font(.title2)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
-                            .cornerRadius(10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(selectedLevel == level ? Color.blue : Color.gray)
+                            )
                     }
                     .padding(.horizontal)
-                } else {
-                    Text("Enter Password")
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
-                    SecureField("Password", text: $password)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .padding(.horizontal)
-                        .autocapitalization(.none)
-                    
-                    Button(action: verifyPassword) {
-                        Text("Submit")
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue)
-                            .cornerRadius(10)
-                    }
-                    .padding(.horizontal)
-                    
-                    if showError {
-                        Text("Incorrect password. Please try again.")
-                            .foregroundColor(.red)
-                            .padding()
-                    }
+                }
+                
+                if selectedLevel == 1 {
+                    Text("Basic Level")
+                        .font(.title3)
+                        .padding()
+                } else if selectedLevel == 2 {
+                    Text("Volume Meter Level")
+                        .font(.title3)
+                        .padding()
+                } else if selectedLevel == 3 {
+                    Text("AR Water Bottle Scanner")
+                        .font(.title3)
+                        .padding()
                 }
             }
-            .padding()
-            .navigationTitle("Puzzle System")
-        }
-    }
-    
-    private func verifyPassword() {
-        if password == correctPassword {
-            isUnlocked = true
-            showError = false
-        } else {
-            showError = true
-            password = ""
+            .sheet(isPresented: $showingVolumeMeter) {
+                VolumeLevelView()
+            }
+            .fullScreenCover(isPresented: $showingARView) {
+                WaterBottleARView()
+            }
         }
     }
 }

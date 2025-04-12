@@ -59,7 +59,7 @@ struct VolumeLevelView: View {
     @State private var showError = false
     
     private let requiredVolume: Float = -20.0 // Adjust this value based on testing
-    private let requiredDuration: Int = 5 // seconds
+    private let requiredDuration: Int = 1 // seconds
     
     var body: some View {
         VStack(spacing: 20) {
