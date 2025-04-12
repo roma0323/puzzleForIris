@@ -56,12 +56,14 @@ struct VolumeLevelView: View {
     @State private var elapsedTime: Double = 0
     @State private var timer: Timer?
     @State private var isSuccess = false
+    var onSuccess: (() -> Void)?
     
     private let requiredVolume: Float = -30.0
-    private let requiredDuration: Double = 3.0
+    private let requiredDuration: Double = 1.0
     
     var body: some View {
         VStack(spacing: 30) {
+          
             Spacer()
             
             // Time Progress Bar
@@ -98,12 +100,7 @@ struct VolumeLevelView: View {
             .frame(height: 20)
             .padding(.horizontal)
             
-            if isSuccess {
-                Text("Success!")
-                    .foregroundColor(.green)
-                    .font(.headline)
-                    .padding()
-            }
+        
             
             Spacer()
         }
@@ -141,6 +138,11 @@ struct VolumeLevelView: View {
                 isSuccess = true
                 audioManager.stopRecording()
                 timer?.invalidate()
+                
+                // Call the onSuccess callback when the challenge is completed
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    onSuccess?()
+                }
             }
         }
     }
