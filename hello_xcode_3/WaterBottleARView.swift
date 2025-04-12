@@ -1,7 +1,6 @@
 import SwiftUI
 import ARKit
 import RealityKit
-import Vision
 
 struct WaterBottleARView: View {
     @StateObject private var arViewModel = ARViewModel()
@@ -13,7 +12,7 @@ struct WaterBottleARView: View {
             
             VStack {
                 Spacer()
-                Text(arViewModel.detectionMessage)
+                Text(arViewModel.statusMessage)
                     .foregroundColor(.white)
                     .padding()
                     .background(Color.black.opacity(0.7))
@@ -25,101 +24,71 @@ struct WaterBottleARView: View {
 }
 
 class ARViewModel: ObservableObject {
-    @Published var detectionMessage: String = "Looking for bottle..."
-    private var detectionRequest: VNRequest?
+    @Published var statusMessage: String = "Tap anywhere to place 3D text"
     weak var arView: ARView?
-    private var currentAnchor: AnchorEntity?
+    private var textEntities: [AnchorEntity] = []
     
-    init() {
-        setupVision()
-    }
-    
-    private func setupVision() {
-        setupBasicObjectDetection()
-    }
-    
-    private func setupBasicObjectDetection() {
-        let request = VNDetectRectanglesRequest { [weak self] request, error in
-            self?.processRectangles(for: request, error: error)
-        }
-        request.minimumAspectRatio = 0.3
-        request.maximumAspectRatio = 1.0
-        self.detectionRequest = request
-    }
-    
-    private func processRectangles(for request: VNRequest, error: Error?) {
-        DispatchQueue.main.async {
-            guard let results = request.results as? [VNRectangleObservation],
-                  !results.isEmpty else {
-                self.detectionMessage = "Looking for bottle..."
-                return
-            }
-            
-            // When a rectangle is detected that could be a bottle
-            let observation = results[0]
-            let confidence = Int(observation.confidence * 100)
-            self.detectionMessage = "Possible bottle detected! (\(confidence)% confident)"
-            
-            // Convert normalized coordinates to view coordinates
-            if let arView = self.arView {
-                let viewWidth = arView.frame.width
-                let viewHeight = arView.frame.height
-                
-                // Get center point of the detected rectangle
-                let centerX = observation.boundingBox.midX * viewWidth
-                let centerY = (1 - observation.boundingBox.midY) * viewHeight
-                let screenPoint = CGPoint(x: centerX, y: centerY)
-                
-                // Perform hit test with detected point
-                let results = arView.hitTest(screenPoint, types: [.existingPlaneUsingExtent, .estimatedHorizontalPlane])
-                
-                if let firstResult = results.first {
-                    // Create or update text at the hit test position
-                    self.addOrUpdateText(at: firstResult.worldTransform, text: "Bottle", confidence: confidence)
-                }
-            }
-        }
-    }
-    
-    private func addOrUpdateText(at transform: simd_float4x4, text: String, confidence: Int) {
+    func addText(at location: SIMD3<Float>, text: String = "Hello AR!") {
         guard let arView = arView else { return }
         
-        // Remove existing anchor if any
-        if let currentAnchor = currentAnchor {
-            arView.scene.removeAnchor(currentAnchor)
-        }
-        
-        // Create text mesh
+        // Create text mesh with improved appearance
         let textMesh = MeshResource.generateText(
-            "\(text) (\(confidence)%)",
-            extrusionDepth: 0.01,
-            font: .systemFont(ofSize: 0.1),
+            text,
+            extrusionDepth: 0.02,
+            font: .boldSystemFont(ofSize: 0.15),
             containerFrame: .zero,
             alignment: .center,
             lineBreakMode: .byTruncatingTail
         )
         
-        // Create material
+        // Create material with modern appearance
         var material = SimpleMaterial()
         material.baseColor = MaterialColorParameter.color(.white)
+        material.metallic = MaterialScalarParameter(floatLiteral: 0.8)
+        material.roughness = MaterialScalarParameter(floatLiteral: 0.2)
         
         // Create text entity
         let textEntity = ModelEntity(mesh: textMesh, materials: [material])
         
-        // Create anchor and position text above the detected point
-        let anchor = AnchorEntity(world: transform)
+        // Configure physics to make text static
+        textEntity.collision = CollisionComponent(shapes: [.generateBox(size: textMesh.bounds.extents)])
+        textEntity.physicsBody = PhysicsBodyComponent(
+            massProperties: .init(mass: 0.0),  // Zero mass makes it static
+            material: .default,
+            mode: .static  // Static mode prevents any movement
+        )
+        
+        // Create anchor and position text
+        let anchor = AnchorEntity(world: .init(location))
         textEntity.position.y += 0.1 // Raise text 10cm above the anchor
         anchor.addChild(textEntity)
         
+        // Add shadow plane
+        let shadowPlane = ModelEntity(
+            mesh: .generatePlane(width: Float(textMesh.bounds.max.x - textMesh.bounds.min.x) + 0.05,
+                               depth: Float(textMesh.bounds.max.z - textMesh.bounds.min.z) + 0.05),
+            materials: [SimpleMaterial(color: .black.withAlphaComponent(0.3), isMetallic: false)]
+        )
+        shadowPlane.position.y -= 0.001
+        anchor.addChild(shadowPlane)
+        
         // Add to scene and store reference
         arView.scene.addAnchor(anchor)
-        currentAnchor = anchor
+        textEntities.append(anchor)
+        
+        // Update status message
+        statusMessage = "Text placed! Tap anywhere to add more"
     }
     
-    func processFrame(_ pixelBuffer: CVPixelBuffer) {
-        let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up)
-        guard let request = detectionRequest else { return }
-        try? imageRequestHandler.perform([request])
+    func handleTap(at point: CGPoint) {
+        guard let arView = arView else { return }
+        
+        let results = arView.raycast(from: point, allowing: .estimatedPlane, alignment: .any)
+        
+        if let firstResult = results.first {
+            let worldPosition = firstResult.worldTransform.columns.3
+            addText(at: SIMD3(worldPosition.x, worldPosition.y, worldPosition.z))
+        }
     }
 }
 
@@ -130,25 +99,24 @@ struct ARViewContainer: UIViewRepresentable {
         let arView = ARView(frame: .zero)
         
         // Configure AR session
-        let session = arView.session
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal, .vertical]
-        session.run(config)
+        arView.session.run(config)
         
         // Add coaching overlay
         let coachingOverlay = ARCoachingOverlayView()
         coachingOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        coachingOverlay.session = session
+        coachingOverlay.session = arView.session
         coachingOverlay.goal = .horizontalPlane
         arView.addSubview(coachingOverlay)
         
-        // Set up session delegate
-        session.delegate = context.coordinator
+        // Add tap gesture
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        arView.addGestureRecognizer(tapGesture)
         
         // Store ARView reference in view model
         arViewModel.arView = arView
         
-        context.coordinator.arView = arView
         return arView
     }
     
@@ -158,17 +126,16 @@ struct ARViewContainer: UIViewRepresentable {
         Coordinator(self)
     }
     
-    class Coordinator: NSObject, ARSessionDelegate {
+    class Coordinator: NSObject {
         let parent: ARViewContainer
-        weak var arView: ARView?
         
         init(_ parent: ARViewContainer) {
             self.parent = parent
-            super.init()
         }
         
-        func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            parent.arViewModel.processFrame(frame.capturedImage)
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            let location = gesture.location(in: gesture.view)
+            parent.arViewModel.handleTap(at: location)
         }
     }
 }

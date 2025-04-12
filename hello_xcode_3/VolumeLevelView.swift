@@ -53,22 +53,33 @@ class AudioManager: ObservableObject {
 
 struct VolumeLevelView: View {
     @StateObject private var audioManager = AudioManager()
-    @State private var timeRemaining: Int = 5
+    @State private var elapsedTime: Double = 0
     @State private var timer: Timer?
     @State private var isSuccess = false
-    @State private var showError = false
     
-    private let requiredVolume: Float = -20.0 // Adjust this value based on testing
-    private let requiredDuration: Int = 1 // seconds
+    private let requiredVolume: Float = -30.0
+    private let requiredDuration: Double = 3.0
     
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Volume Level Challenge")
-                .font(.title)
-                .fontWeight(.bold)
+        VStack(spacing: 30) {
+            Spacer()
             
-            Text("Yell for \(timeRemaining) seconds!")
-                .font(.headline)
+            // Time Progress Bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .frame(width: geometry.size.width, height: 10)
+                        .opacity(0.3)
+                        .foregroundColor(.gray)
+                    
+                    Rectangle()
+                        .frame(width: min(CGFloat(elapsedTime / requiredDuration) * geometry.size.width, geometry.size.width), height: 10)
+                        .foregroundColor(.blue)
+                }
+                .cornerRadius(5)
+            }
+            .frame(height: 10)
+            .padding(.horizontal)
             
             // Volume meter
             GeometryReader { geometry in
@@ -87,30 +98,19 @@ struct VolumeLevelView: View {
             .frame(height: 20)
             .padding(.horizontal)
             
-            Text(String(format: "Current Volume: %.1f dB", audioManager.currentVolume))
-                .font(.subheadline)
-            
             if isSuccess {
-                Text("Success! You've completed the volume challenge!")
+                Text("Success!")
                     .foregroundColor(.green)
-                    .padding()
-            } else if showError {
-                Text("Try again! Keep the volume up!")
-                    .foregroundColor(.red)
+                    .font(.headline)
                     .padding()
             }
             
-            Button(action: startChallenge) {
-                Text(audioManager.isRecording ? "Stop" : "Start Challenge")
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(audioManager.isRecording ? Color.red : Color.blue)
-                    .cornerRadius(10)
-            }
-            .padding(.horizontal)
+            Spacer()
         }
         .padding()
+        .onAppear {
+            startChallenge()
+        }
         .onDisappear {
             audioManager.stopRecording()
             timer?.invalidate()
@@ -121,36 +121,24 @@ struct VolumeLevelView: View {
         if audioManager.currentVolume >= requiredVolume {
             return .green
         } else {
-            return .red
+            return .orange
         }
     }
     
     private func startChallenge() {
-        if audioManager.isRecording {
-            audioManager.stopRecording()
-            timer?.invalidate()
-            return
-        }
-        
         isSuccess = false
-        showError = false
-        timeRemaining = requiredDuration
+        elapsedTime = 0
         audioManager.startRecording()
         
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            if timeRemaining > 0 {
-                timeRemaining -= 1
-                if audioManager.currentVolume < requiredVolume {
-                    showError = true
-                    audioManager.stopRecording()
-                    timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            if elapsedTime < requiredDuration {
+                if audioManager.currentVolume >= requiredVolume {
+                    elapsedTime += 0.1
+                } else {
+                    elapsedTime = 0
                 }
             } else {
-                if audioManager.currentVolume >= requiredVolume {
-                    isSuccess = true
-                } else {
-                    showError = true
-                }
+                isSuccess = true
                 audioManager.stopRecording()
                 timer?.invalidate()
             }

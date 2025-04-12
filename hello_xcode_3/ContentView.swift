@@ -11,6 +11,11 @@ struct ContentView: View {
     @State private var selectedLevel = 1
     @State private var showingVolumeMeter = false
     @State private var showingARView = false
+    @State private var password = ""
+    @State private var showPasswordError = false
+    @State private var isLevel1Unlocked = false
+    
+    private let correctPassword = "1234" // You can change this to your desired password
     
     var body: some View {
         NavigationView {
@@ -42,9 +47,45 @@ struct ContentView: View {
                 }
                 
                 if selectedLevel == 1 {
-                    Text("Basic Level")
-                        .font(.title3)
-                        .padding()
+                    VStack(spacing: 15) {
+                        Text("Basic Level")
+                            .font(.title3)
+                            .padding()
+                        
+                        if !isLevel1Unlocked {
+                            SecureField("Enter Password", text: $password)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .padding(.horizontal)
+                            
+                            Button(action: {
+                                if password == correctPassword {
+                                    isLevel1Unlocked = true
+                                    showPasswordError = false
+                                } else {
+                                    showPasswordError = true
+                                }
+                            }) {
+                                Text("Submit")
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .cornerRadius(10)
+                            }
+                            .padding(.horizontal)
+                            
+                            if showPasswordError {
+                                Text("Incorrect password. Please try again.")
+                                    .foregroundColor(.red)
+                                    .padding()
+                            }
+                        } else {
+                            Text("Level 1 Unlocked!")
+                                .foregroundColor(.green)
+                                .font(.headline)
+                                .padding()
+                        }
+                    }
                 } else if selectedLevel == 2 {
                     Text("Volume Meter Level")
                         .font(.title3)
